@@ -66,10 +66,10 @@ window.__ModuleLoader__.load({
           .sw-hbtn.primary:hover:not(:disabled){background:#187a40;}
           .sw-hbtn.danger{background:#d3352c;border-color:#d3352c;color:#fff;}
           .sw-hbtn.danger:hover:not(:disabled){background:#b52a23;}
-          .sw-hbtn.on{background:#ddf3e5;border-color:#9ad4ae;color:#155d33;}
+          .sw-hbtn.on{background:var(--dsw-alias-interactive-bg-hover,rgba(127,127,127,.16));border-color:var(--dsw-alias-border-l3,#9ad4ae);color:var(--dsw-alias-label-primary,#155d33);}
           .sw-tabs{display:flex;gap:2px;padding:6px 14px 0;border-bottom:1px solid var(--dsw-alias-border-l2,#eaeef2);align-items:center;}
           .sw-tab{border:none;background:transparent;cursor:pointer;font-size:13px;padding:6px 14px;color:var(--dsw-alias-label-secondary,#57606a);border-bottom:2px solid transparent;}
-          .sw-tab.on{color:#1f2328;border-bottom-color:var(--dsw-alias-state-business-primary,#1f8f4d);font-weight:600;}
+          .sw-tab.on{color:var(--dsw-alias-label-primary,#1f2328);border-bottom-color:var(--dsw-alias-state-business-primary,#1f8f4d);font-weight:600;}
           .sw-tab.small{font-size:12px;padding:4px 10px;}
           .sw-logwrap{flex:1;min-height:0;display:flex;}
           .sw-log{flex:1;background:#0d1117;color:#c9d1d9;padding:10px 14px;overflow:auto;font-family:var(--dsw-font-mono,Consolas,Menlo,monospace);font-size:12px;line-height:1.55;white-space:pre-wrap;word-break:break-all;margin:0;}
@@ -107,6 +107,16 @@ window.__ModuleLoader__.load({
           .sw-pfoot{display:flex;align-items:center;gap:8px;padding:10px 16px;border-top:1px solid var(--dsw-alias-border-l2,#eaeef2);}
           .sw-plabel{font-size:12px;color:var(--dsw-alias-label-caption,#6a737d);flex:none;}
           .sw-pfoot .sw-input{flex:1;}
+          /* 深色主题兜底：激活页签/按钮标题在深色下必须清晰可读 */
+          @media (prefers-color-scheme: dark){
+            .sw-tab.on{color:#e6edf3;}
+            .sw-hbtn.on{color:#e6edf3;background:rgba(127,127,127,.22);border-color:#e6edf3;}
+            .sw-title,.sw-cfgtitle,.sw-cfggrptitle{color:#e6edf3;}
+            .sw-tab{color:#8b949e;}
+            .sw-hbtn{color:#e6edf3;background:rgba(127,127,127,.12);border-color:rgba(255,255,255,.18);}
+            .sw-btn{color:#8b949e;}
+            .sw-btn.on{color:#e6edf3;}
+          }
         `
         document.head.appendChild(style)
         return () => style.remove()
