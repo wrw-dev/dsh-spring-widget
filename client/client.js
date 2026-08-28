@@ -478,8 +478,14 @@ window.__ModuleLoader__.load({
               h('span', { className: 'sw-spacer' }),
               h('button', { className: 'sw-tab small' + (st.paused ? ' on' : ''), onClick: () => setStore({ paused: !st.paused }) }, st.paused ? '▶ 继续抓取' : '⏸ 暂停抓取'),
               h('button', { className: 'sw-tab small' + (st.follow ? ' on' : ''), onClick: () => setStore({ follow: !st.follow }) }, '⇩ 跟随滚动'),
-              // 清屏：只清当前显示文本；读取偏移保留 → 下次轮询只追加新输出，历史日志不会闪回
-              h('button', { className: 'sw-tab small', onClick: () => { store.logs = ''; store.build = ''; setStore({ logs: '', build: '' }) } }, '✕ 清屏'),
+              // 清屏：只清当前激活页签的显示内容；读取偏移保留 → 下次轮询只追加新输出，历史日志不会闪回
+              h('button', { className: 'sw-tab small', onClick: () => {
+                const patch = {}
+                if (store.tab === 'app') patch.logs = ''
+                else if (store.tab === 'access') patch.access = ''
+                else if (store.tab === 'build') patch.build = ''
+                setStore(patch)
+              } }, '✕ 清屏'),
               h('button', { className: 'sw-tab small', onClick: copyLogs }, '⧉ 复制' + (st.copied ? '（' + st.copied + '）' : ''))),
             h('div', { className: 'sw-logwrap' }, h(LogView)),
             st.error ? h('div', { className: 'sw-err', style: { padding: '4px 14px' } }, st.error) : null,
