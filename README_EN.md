@@ -1,6 +1,6 @@
 <div align="center" style="font-size:14px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;">
   <span style="display:inline-block; border:1px solid #d0d7de; border-radius:8px; overflow:hidden;">
-    <a href="README.md" style="display:inline-block; padding:6px 22px; text-decoration:none; color:#0969da; background:#f6f8fa;">简体中文</a><a href="README_EN.md" style="display:inline-block; padding:6px 22px; text-decoration:none; color:#1f2328; background:#fff; font-weight:600;">English</a>
+    <a href="README.md" style="display:inline-block; padding:6px 22px; text-decoration:none; color:#0969da; background:#f6f8fa;">简体中文</a> | <a href="README_EN.md" style="display:inline-block; padding:6px 22px; text-decoration:none; color:#1f2328; background:#fff; font-weight:600;">English</a>
   </span>
 </div>
 
