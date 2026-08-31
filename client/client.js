@@ -53,8 +53,13 @@ window.__ModuleLoader__.load({
           .sw-metaText{max-width:220px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
           .sw-chevOpen{transform:rotate(180deg);}
           .sw-mask{position:fixed;inset:0;background:rgba(0,0,0,.35);z-index:9998;}
-          .sw-console{position:fixed;left:24px;right:24px;top:56px;bottom:24px;max-width:1400px;margin:0 auto;background:var(--dsw-alias-bg-layer-1,#fff);color:var(--dsw-alias-label-primary,#1f2328);border:1px solid var(--dsw-alias-border-l2,#d0d7de);border-radius:12px;box-shadow:0 16px 48px rgba(0,0,0,.28);z-index:9999;display:flex;flex-direction:column;overflow:hidden;font-size:13px;}
-          .sw-head{display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid var(--dsw-alias-border-l2,#eaeef2);flex-wrap:wrap;}
+          /* 几何（left/top/width/height）由 JS 按默认布局或记忆值内联设置，可拖动/缩放 */
+          .sw-console{position:fixed;background:var(--dsw-alias-bg-layer-1,#fff);color:var(--dsw-alias-label-primary,#1f2328);border:1px solid var(--dsw-alias-border-l2,#d0d7de);border-radius:12px;box-shadow:0 16px 48px rgba(0,0,0,.28);z-index:9999;display:flex;flex-direction:column;overflow:hidden;font-size:13px;}
+          .sw-head{display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid var(--dsw-alias-border-l2,#eaeef2);flex-wrap:wrap;cursor:grab;touch-action:none;}
+          .sw-resize{position:absolute;right:2px;bottom:2px;width:16px;height:16px;cursor:nwse-resize;z-index:5;touch-action:none;}
+          .sw-resize::before,.sw-resize::after{content:'';position:absolute;width:9px;height:2px;border-radius:1px;background:var(--dsw-alias-label-caption,#6a737d);}
+          .sw-resize::before{right:2px;bottom:4px;transform:rotate(-45deg);}
+          .sw-resize::after{right:2px;bottom:9px;width:6px;transform:rotate(-45deg);}
           .sw-title{font-weight:600;font-size:14px;}
           .sw-pill{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--dsw-alias-label-caption,#6a737d);}
           .sw-dot{width:8px;height:8px;border-radius:50%;display:inline-block;flex:none;}
@@ -127,10 +132,81 @@ window.__ModuleLoader__.load({
         open: false, tab: 'app', follow: true, paused: false, showConfig: false, collapsed: false,
         status: null, logs: '', build: '', access: '', picker: null,
         outOff: 0, errOff: 0, buildSeq: -1, buildOff: 0, accessOff: 0,
-        busy: false, error: '', cfgDraft: null, copied: '',
+        busy: false, error: '', cfgDraft: null, copied: '', consoleGeo: null,
       }
       const subs = new Set()
       const setStore = (patch) => { Object.assign(store, patch); for (const fn of subs) fn() }
+
+      // ---------- 控制台浮窗几何：默认布局 / localStorage 记忆 / 视口 clamp ----------
+      const GEO_KEY = 'dsh-spring-widget.geo'
+      const GEO_MIN_W = 520, GEO_MIN_H = 320
+      const clampGeo = (g) => {
+        const vw = window.innerWidth, vh = window.innerHeight
+        let w = Math.min(Math.max(g.w, GEO_MIN_W), vw)
+        let h = Math.min(Math.max(g.h, GEO_MIN_H), vh)
+        // 严格 clamp：窗口完全在视口内
+        let x = Math.min(Math.max(g.x, 0), vw - w)
+        let y = Math.min(Math.max(g.y, 0), vh - h)
+        return { x, y, w, h }
+      }
+      const defaultGeo = () => {
+        // 与旧 CSS 布局一致：左右 24px、顶 56px、底 24px、max-width 1400px 居中
+        const vw = window.innerWidth, vh = window.innerHeight
+        const w = Math.min(vw - 48, 1400)
+        return clampGeo({ x: (vw - w) / 2, y: 56, w, h: vh - 80 })
+      }
+      const loadGeo = () => {
+        try {
+          const raw = window.localStorage.getItem(GEO_KEY)
+          if (!raw) return null
+          const g = JSON.parse(raw)
+          if (!g || typeof g.x !== 'number' || typeof g.y !== 'number' || typeof g.w !== 'number' || typeof g.h !== 'number') return null
+          return clampGeo(g)
+        } catch { return null }
+      }
+      const saveGeo = (g) => {
+        try { window.localStorage.setItem(GEO_KEY, JSON.stringify(g)) } catch { }
+      }
+      // 打开控制台时初始化几何（有记忆用记忆，否则默认布局）
+      const initGeo = () => { if (!store.consoleGeo) setStore({ consoleGeo: loadGeo() || defaultGeo() }) }
+
+      // 拖动 / 缩放：pointerdown 记录起点，move 全局监听并 clamp 后写 store，up 清理并持久化
+      const beginDrag = (e) => {
+        if (e.button !== 0) return
+        // 只从标题栏空白处起拖：按钮/输入框上起拖时照常点击，不进入拖动
+        if (e.target.closest && e.target.closest('button,input,select,textarea,a,[role=button]')) return
+        const geo0 = store.consoleGeo || defaultGeo()
+        const px = e.clientX, py = e.clientY
+        e.preventDefault()
+        const onMove = (ev) => {
+          setStore({ consoleGeo: clampGeo({ ...geo0, x: geo0.x + ev.clientX - px, y: geo0.y + ev.clientY - py }) })
+        }
+        const onUp = () => {
+          window.removeEventListener('pointermove', onMove)
+          window.removeEventListener('pointerup', onUp)
+          if (store.consoleGeo) saveGeo(store.consoleGeo)
+        }
+        window.addEventListener('pointermove', onMove)
+        window.addEventListener('pointerup', onUp)
+      }
+      const beginResize = (e) => {
+        if (e.button !== 0) return
+        const geo0 = store.consoleGeo || defaultGeo()
+        const px = e.clientX, py = e.clientY
+        e.preventDefault()
+        e.stopPropagation()
+        const onMove = (ev) => {
+          setStore({ consoleGeo: clampGeo({ ...geo0, w: geo0.w + ev.clientX - px, h: geo0.h + ev.clientY - py }) })
+        }
+        onMove(e)
+        const onUp = () => {
+          window.removeEventListener('pointermove', onMove)
+          window.removeEventListener('pointerup', onUp)
+          if (store.consoleGeo) saveGeo(store.consoleGeo)
+        }
+        window.addEventListener('pointermove', onMove)
+        window.addEventListener('pointerup', onUp)
+      }
 
       const rpc = async (method, args) => {
         try {
@@ -146,7 +222,7 @@ window.__ModuleLoader__.load({
         }
       }
 
-      const openConsole = () => { setStore({ open: true, paused: false }); refreshLogs() }
+      const openConsole = () => { initGeo(); setStore({ open: true, paused: false }); refreshLogs() }
       const closeConsole = () => setStore({ open: false })
       const toggleCollapse = () => setStore({ collapsed: !store.collapsed })
 
@@ -230,6 +306,15 @@ window.__ModuleLoader__.load({
         tick()
         return stop
       }, 'dsh-spring-widget: poller')
+
+      // 浏览器视口变化：把已打开的浮窗重新 clamp 回视口内（防窗口缩小后浮窗挂在外面）
+      ctx.effect(() => {
+        const onWinResize = () => {
+          if (store.consoleGeo) setStore({ consoleGeo: clampGeo(store.consoleGeo) })
+        }
+        window.addEventListener('resize', onWinResize)
+        return () => window.removeEventListener('resize', onWinResize)
+      }, 'dsh-spring-widget: viewport-clamp')
 
       // ---------- 组件 ----------
       const useStore = () => {
@@ -399,7 +484,6 @@ window.__ModuleLoader__.load({
         const st = useStore()
         if (!st.open) return null
         return h(react.Fragment, null,
-          h('div', { className: 'sw-mask', onClick: closeConsole }),
           h(ConsoleBody),
           st.picker ? h(PickerDialog) : null)
       }
@@ -457,9 +541,13 @@ window.__ModuleLoader__.load({
         const up = s.phase === 'running' && s.startedAt ? Math.max(0, Math.floor(((s.now) || Date.now()) - s.startedAt) / 1000) : 0
         const upText = up ? (Math.floor(up / 3600) + ':' + String(Math.floor((up % 3600) / 60)).padStart(2, '0') + ':' + String(Math.floor(up % 60)).padStart(2, '0')) : '—'
         const label = s.jarName || 'kingdee-sync-server'
+        const geo = st.consoleGeo || defaultGeo()
         return h(react.Fragment, null,
-          h('div', { className: 'sw-console', role: 'dialog', 'aria-label': '后端服务控制台' },
-            h('div', { className: 'sw-head' },
+          h('div', {
+            className: 'sw-console', role: 'dialog', 'aria-label': '后端服务控制台',
+            style: { left: geo.x + 'px', top: geo.y + 'px', width: geo.w + 'px', height: geo.h + 'px' },
+          },
+            h('div', { className: 'sw-head', onPointerDown: beginDrag },
               h('span', { className: 'sw-dot ' + (s.phase === 'running' ? 'sw-pulse' : ''), style: { background: info.color } }),
               h('span', { className: 'sw-title' }, label),
               h('span', { className: 'sw-pill' }, info.text + (s.phase === 'running' && s.port ? ' · :' + s.port : '')),
@@ -530,7 +618,8 @@ window.__ModuleLoader__.load({
               h('span', null, '运行: ' + upText),
               h('span', null, '方式: ' + (s.mode === 'src' ? '源码直启' : 'Jar')),
               h('span', null, '主类: ' + (s.mainClass || '自动识别')),
-              h('span', null, '目录: ' + (s.cwd || '—')))))
+              h('span', null, '目录: ' + (s.cwd || '—'))),
+            h('div', { className: 'sw-resize', title: '拖动调整大小', onPointerDown: beginResize })))
       }
 
       // 顶栏常驻微件：utilities（标题右侧操作组之右）；控制台走全局 overlay
