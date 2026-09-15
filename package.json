@@ -1,6 +1,6 @@
 {
   "name": "dsh-spring-widget",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Spring Boot 后端服务管理器：顶栏 IDEA 式启动/停止/日志控制台（源码直启，无需打包）",
   "type": "module",
   "main": "index.js",

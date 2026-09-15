@@ -27,12 +27,11 @@ window.__ModuleLoader__.load({
     const RPC = 'spring-widget'
 
     const name = 'dsh-spring-widget'
-    const inject = ['slots', 'connection', 'timer', 'workspaces']
+    const inject = ['slots', 'connection', 'timer']
 
     function apply(ctx) {
       const slots = ctx.get('slots')
       const connection = ctx.get('connection')
-      const workspaces = ctx.get('workspaces')
       if (!slots || !connection) return
 
       ctx.effect(() => {
@@ -48,8 +47,7 @@ window.__ModuleLoader__.load({
           .sw-btn.on{background:var(--dsw-alias-interactive-bg-hover,rgba(127,127,127,.18));color:var(--dsw-alias-label-primary,#1f2328);}
           .sw-pulse{animation:sw-blink 1.5s ease-in-out infinite;}
           @keyframes sw-blink{0%,100%{opacity:1}50%{opacity:.35}}
-          .sw-meta{display:inline-flex;align-items:center;gap:5px;padding:0 6px 0 2px;font-size:12px;color:var(--dsw-alias-label-tertiary,#6a737d);cursor:pointer;border:none;background:transparent;height:28px;border-radius:6px;}
-          .sw-meta:hover{background:var(--dsw-alias-interactive-bg-hover,rgba(127,127,127,.15));}
+          .sw-select{height:26px;max-width:190px;padding:0 4px;font-size:12px;border:1px solid var(--dsw-alias-border-l2,#d0d7de);border-radius:6px;background:var(--dsw-alias-bg-layer-1,#fff);color:var(--dsw-alias-label-primary,#1f2328);cursor:pointer;}
           .sw-metaText{max-width:220px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
           .sw-chevOpen{transform:rotate(180deg);}
           .sw-mask{position:fixed;inset:0;background:rgba(0,0,0,.35);z-index:9998;}
@@ -72,6 +70,14 @@ window.__ModuleLoader__.load({
           .sw-hbtn.danger{background:#d3352c;border-color:#d3352c;color:#fff;}
           .sw-hbtn.danger:hover:not(:disabled){background:#b52a23;}
           .sw-hbtn.on{background:var(--dsw-alias-interactive-bg-hover,rgba(127,127,127,.16));border-color:var(--dsw-alias-border-l3,#9ad4ae);color:var(--dsw-alias-label-primary,#155d33);}
+          /* IDEA 运行控制台式服务标签页：每服务一页，点切换活动服务 */
+          .sw-svctabs{display:flex;align-items:center;gap:2px;padding:5px 10px 0;border-bottom:1px solid var(--dsw-alias-border-l2,#eaeef2);overflow-x:auto;flex:none;}
+          .sw-svctab{display:inline-flex;align-items:center;gap:6px;border:none;background:transparent;cursor:pointer;font-size:12.5px;padding:5px 12px;color:var(--dsw-alias-label-secondary,#57606a);border-bottom:2px solid transparent;white-space:nowrap;border-radius:6px 6px 0 0;}
+          .sw-svctab:hover{background:var(--dsw-alias-interactive-bg-hover,rgba(127,127,127,.12));}
+          .sw-svctab.on{color:var(--dsw-alias-label-primary,#1f2328);border-bottom-color:var(--dsw-alias-state-business-primary,#1f8f4d);font-weight:600;background:var(--dsw-alias-interactive-bg-hover,rgba(127,127,127,.08));}
+          .sw-svctabname{max-width:150px;overflow:hidden;text-overflow:ellipsis;}
+          .sw-svctabport{font-size:11px;color:var(--dsw-alias-label-caption,#6a737d);}
+          .sw-svctabadd{color:#1a8a3c;font-size:15px;line-height:1;padding:4px 10px;font-weight:600;}
           .sw-tabs{display:flex;gap:2px;padding:6px 14px 0;border-bottom:1px solid var(--dsw-alias-border-l2,#eaeef2);align-items:center;}
           .sw-tab{border:none;background:transparent;cursor:pointer;font-size:13px;padding:6px 14px;color:var(--dsw-alias-label-secondary,#57606a);border-bottom:2px solid transparent;}
           .sw-tab.on{color:var(--dsw-alias-label-primary,#1f2328);border-bottom-color:var(--dsw-alias-state-business-primary,#1f8f4d);font-weight:600;}
@@ -115,12 +121,14 @@ window.__ModuleLoader__.load({
           /* 深色主题兜底：激活页签/按钮标题在深色下必须清晰可读 */
           @media (prefers-color-scheme: dark){
             .sw-tab.on{color:#e6edf3;}
+            .sw-svctab.on{color:#e6edf3;}
             .sw-hbtn.on{color:#e6edf3;background:rgba(127,127,127,.22);border-color:#e6edf3;}
             .sw-title,.sw-cfgtitle,.sw-cfggrptitle{color:#e6edf3;}
-            .sw-tab{color:#8b949e;}
+            .sw-tab,.sw-svctab{color:#8b949e;}
             .sw-hbtn{color:#e6edf3;background:rgba(127,127,127,.12);border-color:rgba(255,255,255,.18);}
             .sw-btn{color:#8b949e;}
             .sw-btn.on{color:#e6edf3;}
+            .sw-select{color:#e6edf3;background:#161b22;border-color:rgba(255,255,255,.18);}
           }
         `
         document.head.appendChild(style)
@@ -128,14 +136,41 @@ window.__ModuleLoader__.load({
       }, 'dsh-spring-widget: styles')
 
       // ---------- 外部 store（函数式订阅通知，组件内用 useState 强制重渲染） ----------
+      // 多服务模型：status = { activeId, services:[快照…] }；日志缓冲按服务隔离（logsById）
       const store = {
         open: false, tab: 'app', follow: true, paused: false, showConfig: false, collapsed: false,
-        status: null, logs: '', build: '', access: '', picker: null,
-        outOff: 0, errOff: 0, buildSeq: -1, buildOff: 0, accessOff: 0,
+        status: null, picker: null,
+        logsById: {}, // id -> { logs, outOff, errOff, build, buildSeq, buildOff, access, accessOff }
         busy: false, error: '', cfgDraft: null, copied: '', consoleGeo: null,
       }
       const subs = new Set()
       const setStore = (patch) => { Object.assign(store, patch); for (const fn of subs) fn() }
+
+      // ---------- 服务列表 / 活动服务 / 每服务日志缓冲 ----------
+      const svcList = () => (store.status && Array.isArray(store.status.services)) ? store.status.services : []
+      const activeId = () => (store.status && store.status.activeId) || ''
+      const svcById = (id) => svcList().find((s) => s.id === id) || null
+      const activeSvc = () => svcById(activeId()) || svcList()[0] || null
+      const svcName = (s) => (s && (s.name || (s.cwd || '').replace(/[\\/]+$/, '').split(/[\\/]/).pop())) || '服务'
+      const bufOf = (id) => {
+        if (!id) return null
+        if (!store.logsById[id]) store.logsById[id] = { logs: '', outOff: 0, errOff: 0, build: '', buildSeq: -1, buildOff: 0, access: '', accessOff: 0 }
+        return store.logsById[id]
+      }
+      // 单服务快照（start/stop/restart 返回值）合并进列表
+      const mergeSnap = (snap) => {
+        if (!snap || !snap.id) return
+        const list = svcList().slice()
+        const i = list.findIndex((s) => s.id === snap.id)
+        if (i >= 0) list[i] = snap; else list.push(snap)
+        setStore({ status: { activeId: activeId() || snap.id, services: list } })
+      }
+      // rpc 返回值统一落 store：全量状态（含 services 数组）直接 set；单服务快照合并
+      const applyResult = (s) => {
+        if (!s) return
+        if (Array.isArray(s.services)) setStore({ status: s })
+        else mergeSnap(s)
+      }
 
       // ---------- 控制台浮窗几何：默认布局 / localStorage 记忆 / 视口 clamp ----------
       const GEO_KEY = 'dsh-spring-widget.geo'
@@ -228,66 +263,111 @@ window.__ModuleLoader__.load({
 
       const refreshStatus = async () => {
         const s = await rpc('status')
-        if (s) setStore({ status: s, error: '' })
+        if (s) applyResult(s)
       }
+      // 只拉活动服务的日志增量（每服务独立缓冲/偏移；切回标签从上次偏移续读）
       const refreshLogs = async () => {
-        const r = await rpc('logs', { outFrom: store.outOff, errFrom: store.errOff, buildFrom: store.buildOff, accessFrom: store.accessOff })
+        const id = activeId()
+        const b = bufOf(id)
+        if (!b) return
+        const r = await rpc('logs', { id, outFrom: b.outOff, errFrom: b.errOff, buildFrom: b.buildOff, accessFrom: b.accessOff })
         if (!r) return
-        const next = {}
         // 编译输出：宿主 buildSeq 变化（新构建开始）→ 整体重置；否则增量拼接
         if (r.build) {
-          if (r.buildSeq !== undefined && r.buildSeq !== store.buildSeq) {
-            store.buildSeq = r.buildSeq; store.buildOff = 0
-            store.build = r.build.text || ''
+          if (r.buildSeq !== undefined && r.buildSeq !== b.buildSeq) {
+            b.buildSeq = r.buildSeq; b.buildOff = 0
+            b.build = r.build.text || ''
           } else {
-            if (r.build.text) store.build = (store.build + r.build.text).slice(-160000)
+            if (r.build.text) b.build = (b.build + r.build.text).slice(-160000)
           }
-          if (r.build.nextOffset !== undefined) store.buildOff = r.build.nextOffset
-          next.build = store.build
+          if (r.build.nextOffset !== undefined) b.buildOff = r.build.nextOffset
         }
         if (r.out) {
-          if (r.out.lossy) { store.logs = ''; store.outOff = 0 }
-          next.logs = (store.logs + (r.out.text || '')).slice(-160000)
-          store.outOff = r.out.nextOffset
+          if (r.out.lossy) { b.logs = ''; b.outOff = 0 }
+          b.logs = (b.logs + (r.out.text || '')).slice(-160000)
+          b.outOff = r.out.nextOffset
         }
         if (r.err && r.err.text) {
-          if (r.err.lossy) { store.logs = ''; store.errOff = 0 }
-          next.logs = ((next.logs !== undefined ? next.logs : store.logs) + (r.err.text || '')).slice(-160000)
-          store.errOff = r.err.nextOffset
+          if (r.err.lossy) { b.logs = ''; b.errOff = 0 }
+          b.logs = (b.logs + (r.err.text || '')).slice(-160000)
+          b.errOff = r.err.nextOffset
         }
         // 请求日志（Tomcat access log）：增量追加
         if (r.access) {
-          if (r.access.lossy) { store.access = ''; store.accessOff = 0 }
-          next.access = (store.access + (r.access.text || '')).slice(-160000)
-          store.accessOff = r.access.nextOffset
+          if (r.access.lossy) { b.access = ''; b.accessOff = 0 }
+          b.access = (b.access + (r.access.text || '')).slice(-160000)
+          b.accessOff = r.access.nextOffset
         }
-        setStore(next)
+        setStore({ logsById: { ...store.logsById } })
       }
 
       const act = async (method, args) => {
         if (store.busy) return
         setStore({ busy: true, error: '' })
+        const id = (args && args.id) || activeId()
         if (method === 'start') {
-          // 新启动：清显示并归零读取偏移（宿主 lastProc 会换新进程，旧偏移对新流无效）
-          store.logs = ''; store.outOff = 0; store.errOff = 0
-          setStore({ logs: '', tab: 'app', open: true, follow: true, paused: false })
+          // 新启动：清该服务显示并归零读取偏移（宿主会换新进程，旧偏移对新流无效）
+          const b = bufOf(id)
+          if (b) { b.logs = ''; b.outOff = 0; b.errOff = 0 }
+          setStore({ logsById: { ...store.logsById }, tab: 'app', open: true, follow: true, paused: false })
         }
-        const s = await rpc(method, args)
+        const s = await rpc(method, Object.assign({}, args, { id }))
         setStore({ busy: false })
-        if (s) setStore({ status: s })
+        applyResult(s)
+        refreshLogs()
+      }
+
+      // 切换活动服务（IDEA 标签页式）：宿主持久化 activeId，本地日志缓冲按服务保留
+      const switchSvc = async (id) => {
+        if (!id || id === activeId()) return
+        setStore({ follow: true, error: '' })
+        const s = await rpc('setActive', { id })
+        if (s && Array.isArray(s.services)) {
+          // 先落 status 再重建草稿：buildCfgDraft 读 store 里的活动服务，
+          // 若在同一个 setStore 参数里同步求值，拿到的还是切换前的旧服务（配置交叉显示的根因）
+          setStore({ status: s })
+          setStore({ cfgDraft: store.showConfig ? buildCfgDraft() : null })
+        }
+        refreshLogs()
+      }
+      const addSvc = async () => {
+        if (store.busy) return
+        setStore({ busy: true, error: '' })
+        const s = await rpc('addService', {})
+        setStore({ busy: false })
+        if (s && Array.isArray(s.services)) {
+          setStore({ status: s, showConfig: true, cfgDraft: null })
+        }
+      }
+      const removeSvc = async () => {
+        const cur = activeSvc()
+        if (!cur) return
+        if (svcList().length <= 1) { setStore({ error: '至少保留一个服务配置' }); return }
+        if (!window.confirm('确定删除服务「' + svcName(cur) + '」的配置？（运行中会先停止，项目文件不受影响）')) return
+        if (store.busy) return
+        setStore({ busy: true, error: '' })
+        const s = await rpc('removeService', { id: cur.id })
+        setStore({ busy: false })
+        if (s && Array.isArray(s.services)) {
+          // 同 switchSvc：先落 status，再为新的活动服务重建配置草稿
+          setStore({ status: s })
+          setStore({ cfgDraft: store.showConfig ? buildCfgDraft() : null })
+        }
         refreshLogs()
       }
 
       const saveCfg = async () => {
         if (!store.cfgDraft) return
         setStore({ busy: true, error: '' })
-        const s = await rpc('setConfig', { patch: store.cfgDraft })
+        const s = await rpc('setConfig', { id: activeId(), patch: store.cfgDraft })
         setStore({ busy: false, cfgDraft: null })
-        if (s) setStore({ status: s })
+        applyResult(s)
       }
 
       const copyLogs = async () => {
-        const text = store.tab === 'app' ? store.logs : (store.tab === 'access' ? store.access : store.build)
+        const b = bufOf(activeId())
+        if (!b) return
+        const text = store.tab === 'app' ? b.logs : (store.tab === 'access' ? b.access : b.build)
         try {
           if (navigator.clipboard && navigator.clipboard.writeText) {
             await navigator.clipboard.writeText(text || '')
@@ -330,32 +410,29 @@ window.__ModuleLoader__.load({
 
       const HeaderRunWidget = () => {
         const st = useStore()
-        const s = st.status || {}
+        const s = activeSvc() || {}
         const info = phaseInfo(s.phase)
         const busy = st.busy
         const canStart = !busy && (s.phase === 'stopped' || s.phase === 'crashed' || !s.phase)
         const canStop = !busy && s.phase !== 'stopped' && s.phase !== 'crashed' && s.phase !== 'building'
-        const live = s.phase === 'running' || s.phase === 'building' || s.phase === 'starting' || s.phase === 'stopping'
-        const label = s.jarName || '后端服务'
-        const metaText = s.phase === 'running'
-          ? (s.port ? label + ' : ' + s.port : label)
-          : (info.text + (live ? '…' : ''))
+        const list = svcList()
+        const optLabel = (x) => svcName(x) + ' · ' + phaseInfo(x.phase).text + (x.phase === 'running' && x.port ? ' :' + x.port : '')
         if (st.collapsed) {
           return h('button', {
             className: 'sw-btn', title: '展开后端服务控制（Spring Boot）', 'aria-label': '展开后端服务控制',
             onClick: toggleCollapse,
-          }, h('span', { className: live ? 'sw-pulse' : '', style: { width: 7, height: 7, borderRadius: '50%', background: info.color, display: 'inline-block' } }), '后端')
+          }, h('span', { className: live_(s.phase), style: dotStyle_(info.color) }), '后端')
         }
         return h('div', { className: 'sw-bar', role: 'group', 'aria-label': '后端服务控制' },
           h('button', {
             className: 'sw-btn go', disabled: !canStart,
-            title: canStart ? '源码直启（自动打开日志控制台）' : '服务已在运行，点「日志」查看输出',
+            title: canStart ? '源码直启「' + svcName(s) + '」（自动打开日志控制台）' : '服务已在运行，点「日志」查看输出',
             'aria-label': '启动后端服务',
             onClick: () => act('start', { mode: 'src' }),
           }, h(IconPlay)),
           h('button', {
             className: 'sw-btn halt', disabled: !canStop,
-            title: canStop ? '停止后端服务' : '服务未在运行',
+            title: canStop ? '停止「' + svcName(s) + '」' : '服务未在运行',
             'aria-label': '停止后端服务',
             onClick: () => act('stop'),
           }, h(IconStop)),
@@ -364,33 +441,34 @@ window.__ModuleLoader__.load({
             title: '打开日志控制台', 'aria-label': '查看运行日志',
             onClick: openConsole,
           }, h(IconLog), '日志'),
-          h('button', {
-            className: 'sw-meta',
-            title: '后端服务：' + info.text + '（点击打开控制台）',
-            'aria-label': '后端服务：' + info.text,
-            onClick: openConsole,
-          },
-            h('span', { className: live ? 'sw-pulse' : '', style: { width: 7, height: 7, borderRadius: '50%', background: info.color, display: 'inline-block', flex: 'none' } }),
-            h('span', { className: 'sw-metaText' }, metaText),
-            h(IconChevron, { className: st.open ? 'sw-chevOpen' : '' })),
+          h('span', { className: live_(s.phase), style: dotStyle_(info.color), title: svcName(s) + '：' + info.text }),
+          list.length > 0 ? h('select', {
+            className: 'sw-select', value: activeId(),
+            title: '切换服务（IDEA 运行配置式，多个服务可同时运行）',
+            'aria-label': '选择后端服务',
+            onChange: (e) => switchSvc(e.target.value),
+          }, list.map((x) => h('option', { key: x.id, value: x.id }, optLabel(x)))) : null,
           h('button', {
             className: 'sw-btn', title: '收起后端服务控制（保留一个状态点）', 'aria-label': '收起',
             onClick: toggleCollapse,
           }, h(IconChevron, { style: { transform: 'rotate(-90deg)' } })))
       }
+      const live_ = (phase) => 'sw-dot' + (phase === 'running' || phase === 'starting' || phase === 'building' ? ' sw-pulse' : '')
+      const dotStyle_ = (color) => ({ width: 7, height: 7, borderRadius: '50%', background: color, display: 'inline-block', flex: 'none' })
 
       const LogView = () => {
         const st = useStore()
+        const b = bufOf(activeId()) || { logs: '', build: '', access: '' }
         const ref = react.useRef(null)
         react.useEffect(() => {
           if (!st.follow) return
           const el = ref.current
           if (el) el.scrollTop = el.scrollHeight
-        }, [st.logs, st.build, st.access, st.follow])
+        }, [b.logs, b.build, b.access, st.follow])
         const cls = st.tab === 'app' ? 'sw-log' : (st.tab === 'access' ? 'sw-log sw-log-access' : 'sw-buildlog')
-        const text = st.tab === 'app' ? (st.logs || '（暂无日志——点上方「▶ 源码启动」后自动实时滚动）')
-          : st.tab === 'access' ? (st.access || '（暂无请求日志——启动服务后，在前端页面/接口发起请求即会在此显示）')
-          : (st.build || '（暂无编译输出）')
+        const text = st.tab === 'app' ? (b.logs || '（暂无日志——点上方「▶ 源码启动」后自动实时滚动）')
+          : st.tab === 'access' ? (b.access || '（暂无请求日志——启动服务后，在前端页面/接口发起请求即会在此显示）')
+          : (b.build || '（暂无编译输出）')
         return h('pre', {
           className: cls,
           ref,
@@ -403,7 +481,11 @@ window.__ModuleLoader__.load({
       }
 
       // 配置分组：[组标题, 组说明, [key, 标签, 占位符, 是否路径(可浏览), 探测值取自 status.detected 的 key]]
+      // 第一个分组是服务名称（多服务标签页/顶栏下拉的显示名）
       const CFG_GROUPS = [
+        { title: '服务', desc: '名称显示在服务标签页与顶栏下拉', fields: [
+          ['name', '名称', '例如：订单中心', false, ''],
+        ] },
         { title: '路径配置', desc: '留空时自动从 PATH 探测', fields: [
           ['cwd', '项目目录', 'E:\\path\\to\\project', true, 'cwd'],
           ['javaPath', 'JDK', '留空=PATH 中的 java', true, 'javaPath'],
@@ -417,9 +499,9 @@ window.__ModuleLoader__.load({
       ]
       const CFG_ALL = CFG_GROUPS.flatMap((g) => g.fields)
 
-      // 构造配置草稿：已保存值优先；为空的路径字段自动填入探测值（detected）
+      // 构造当前活动服务的配置草稿：已保存值优先；为空的路径字段自动填入探测值（detected）
       const buildCfgDraft = () => {
-        const s = store.status || {}
+        const s = activeSvc() || {}
         const saved = { ...(s.cfg || {}) }
         const det = s.detected || {}
         for (const [k, , , isPath, detKey] of CFG_ALL) {
@@ -434,19 +516,20 @@ window.__ModuleLoader__.load({
 
       // ---------- 自绘目录选择对话框（完整中文标题，不依赖系统对话框标题被截断） ----------
       // store.picker: null 或 { key, title, path, listing, loading, manual, err }
+      // 目录数据走插件自己的 RPC（spring-widget/listDir，宿主 Node fs 直读）：
+      // 宿主网关 host.listDirectory 需要 browse 能力，本机只有 native，故绕开
       const openPicker = async (key, title) => {
         setStore({ picker: { key, title, path: '', listing: null, loading: true, manual: '', err: '' } })
         const listing = await loadListing('')
         if (listing) setStore({ picker: { key, title, path: listing.path, listing, loading: false, manual: listing.path, err: '' } })
       }
       const loadListing = async (path) => {
-        try {
-          const r = await workspaces.listDirectory(path || undefined)
-          return r
-        } catch (e) {
-          setStore({ picker: Object.assign({}, store.picker, { loading: false, err: '读取目录失败：' + ((e && e.message) || e) }) })
+        const r = await rpc('listDir', { path: path || '' })
+        if (!r) {
+          setStore({ picker: store.picker ? Object.assign({}, store.picker, { loading: false, err: '读取目录失败：' + (store.error || '未知错误') }) : store.picker })
           return null
         }
+        return r
       }
       const navPicker = async (path) => {
         setStore({ picker: Object.assign({}, store.picker, { loading: true, err: '' }) })
@@ -531,7 +614,8 @@ window.__ModuleLoader__.load({
 
       const ConsoleBody = () => {
         const st = useStore()
-        const s = st.status || {}
+        const s = activeSvc() || {}
+        const list = svcList()
         const info = phaseInfo(s.phase)
         const cfg = st.cfgDraft || (s.cfg || {})
         const busy = st.busy
@@ -540,7 +624,7 @@ window.__ModuleLoader__.load({
         const canStop = !busy && s.phase !== 'stopped' && s.phase !== 'crashed' && s.phase !== 'building'
         const up = s.phase === 'running' && s.startedAt ? Math.max(0, Math.floor(((s.now) || Date.now()) - s.startedAt) / 1000) : 0
         const upText = up ? (Math.floor(up / 3600) + ':' + String(Math.floor((up % 3600) / 60)).padStart(2, '0') + ':' + String(Math.floor(up % 60)).padStart(2, '0')) : '—'
-        const label = s.jarName || 'kingdee-sync-server'
+        const label = svcName(s)
         const geo = st.consoleGeo || defaultGeo()
         return h(react.Fragment, null,
           h('div', {
@@ -559,6 +643,21 @@ window.__ModuleLoader__.load({
               h('button', { className: 'sw-hbtn', disabled: !canStop, onClick: () => act('restart', { mode: s.mode || 'src' }) }, '⟳ 重启'),
               h('button', { className: 'sw-hbtn' + (st.showConfig ? ' on' : ''), onClick: openConfig }, '⚙ 配置'),
               h('button', { className: 'sw-hbtn', onClick: closeConsole }, '✕ 隐藏')),
+            // IDEA 运行控制台式服务标签页：点击切换活动服务；「＋」新增服务配置
+            list.length > 0 ? h('div', { className: 'sw-svctabs', role: 'tablist', 'aria-label': '服务列表' },
+              list.map((x) => {
+                const xi = phaseInfo(x.phase)
+                return h('button', {
+                  key: x.id, role: 'tab', 'aria-selected': x.id === activeId(),
+                  className: 'sw-svctab' + (x.id === activeId() ? ' on' : ''),
+                  title: svcName(x) + '：' + xi.text + (x.cwd ? '\n' + x.cwd : ''),
+                  onClick: () => switchSvc(x.id),
+                },
+                  h('span', { className: live_(x.phase), style: dotStyle_(xi.color) }),
+                  h('span', { className: 'sw-svctabname' }, svcName(x)),
+                  x.phase === 'running' && x.port ? h('span', { className: 'sw-svctabport' }, ':' + x.port) : null)
+              }),
+              h('button', { className: 'sw-svctab sw-svctabadd', title: '新增服务配置', 'aria-label': '新增服务配置', onClick: addSvc }, '＋')) : null,
             h('div', { className: 'sw-tabs' },
               h('button', { className: 'sw-tab' + (st.tab === 'app' ? ' on' : ''), onClick: () => setStore({ tab: 'app' }) }, '服务日志'),
               h('button', { className: 'sw-tab' + (st.tab === 'access' ? ' on' : ''), onClick: () => setStore({ tab: 'access' }) }, '请求日志'),
@@ -566,13 +665,14 @@ window.__ModuleLoader__.load({
               h('span', { className: 'sw-spacer' }),
               h('button', { className: 'sw-tab small' + (st.paused ? ' on' : ''), onClick: () => setStore({ paused: !st.paused }) }, st.paused ? '▶ 继续抓取' : '⏸ 暂停抓取'),
               h('button', { className: 'sw-tab small' + (st.follow ? ' on' : ''), onClick: () => setStore({ follow: !st.follow }) }, '⇩ 跟随滚动'),
-              // 清屏：只清当前激活页签的显示内容；读取偏移保留 → 下次轮询只追加新输出，历史日志不会闪回
+              // 清屏：只清当前活动服务当前页签的显示内容；读取偏移保留 → 下次轮询只追加新输出，历史日志不会闪回
               h('button', { className: 'sw-tab small', onClick: () => {
-                const patch = {}
-                if (store.tab === 'app') patch.logs = ''
-                else if (store.tab === 'access') patch.access = ''
-                else if (store.tab === 'build') patch.build = ''
-                setStore(patch)
+                const b = bufOf(activeId())
+                if (!b) return
+                if (store.tab === 'app') b.logs = ''
+                else if (store.tab === 'access') b.access = ''
+                else if (store.tab === 'build') b.build = ''
+                setStore({ logsById: { ...store.logsById } })
               } }, '✕ 清屏'),
               h('button', { className: 'sw-tab small', onClick: copyLogs }, '⧉ 复制' + (st.copied ? '（' + st.copied + '）' : ''))),
             h('div', { className: 'sw-logwrap' }, h(LogView)),
@@ -580,7 +680,7 @@ window.__ModuleLoader__.load({
             s.lastError ? h('div', { className: 'sw-err', style: { padding: '4px 14px' } }, s.lastError) : null,
             st.showConfig ? h('div', { className: 'sw-cfgbar' },
               h('div', { className: 'sw-cfghead' },
-                h('span', { className: 'sw-cfgtitle' }, '服务配置'),
+                h('span', { className: 'sw-cfgtitle' }, '服务配置（' + label + '）'),
                 h('span', { className: 'sw-spacer' }),
                 h('span', { className: 'sw-note' }, '保存在 ~/.dsh/spring-widget.json')),
               CFG_GROUPS.map((grp) => h('div', { className: 'sw-cfggrp', key: grp.title },
@@ -588,7 +688,7 @@ window.__ModuleLoader__.load({
                   h('span', { className: 'sw-cfggrptitle' }, grp.title),
                   h('span', { className: 'sw-cfggrpdesc' }, grp.desc)),
                 grp.fields.map(([k, labelText, ph, isPath, detKey]) => {
-                  const det = (s.detected || {})[k]
+                  const det = (s.detected || {})[detKey]
                   const filled = isPath && det && String(cfg[k] || '').trim() === det
                   const field = h('div', { className: 'sw-cfground', key: k },
                     h('div', { className: 'sw-cfglabelwrap' },
@@ -602,7 +702,7 @@ window.__ModuleLoader__.load({
                     isPath
                       ? h('button', {
                           className: 'sw-hbtn sw-browse', style: { flex: 'none' },
-                          title: '打开文件资源管理器选择' + (k === 'javaPath' ? ' JDK 目录（自动补 bin\\java.exe）' : k === 'mavenHome' ? ' Maven 目录' : '项目目录'),
+                          title: '打开目录选择器选择' + (k === 'javaPath' ? ' JDK 目录（自动补 bin\\java.exe）' : k === 'mavenHome' ? ' Maven 目录' : '项目目录'),
                           onClick: () => browseDir(k),
                         }, '浏览…')
                       : h('span', null))
@@ -611,6 +711,7 @@ window.__ModuleLoader__.load({
               h('div', { className: 'sw-cfgactions' },
                 h('button', { className: 'sw-hbtn primary', disabled: st.busy, onClick: saveCfg }, '保存并重新探测'),
                 h('button', { className: 'sw-hbtn', onClick: () => setStore({ cfgDraft: buildCfgDraft() }) }, '还原'),
+                h('button', { className: 'sw-hbtn danger', disabled: st.busy || list.length <= 1, title: list.length <= 1 ? '至少保留一个服务' : '删除当前服务的配置', onClick: removeSvc }, '删除此服务'),
                 h('span', { className: 'sw-note' }, '空白路径字段已自动检测填入（标 ✓）；JDK 支持填根目录/bin/java.exe，Maven 支持根目录/bin'))) : null,
             h('div', { className: 'sw-statusline' },
               h('span', null, 'PID: ' + (s.pid ? String(s.pid) : '—')),
