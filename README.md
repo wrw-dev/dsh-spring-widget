@@ -66,11 +66,28 @@
 
 ## 📦 安装
 
-### 从 GitHub Release 安装
+### 从 GitHub Release 安装（推荐）
+
+最新版 **[v1.2.0](https://github.com/wrw-dev/dsh-spring-widget/releases/latest)** —— 修复 DSH 0.2.1-rc.2 宿主下 RPC 通道注册失败导致的 `HTTP 405`（控制台/目录浏览全部报 transport failure）问题。
 
 ```bash
 dsh plugin add dsh-spring-widget --source github:wrw-dev/dsh-spring-widget
 ```
+
+或手动下载 Release 资产 `dsh-spring-widget-1.2.0.tgz` 后本地安装：
+
+```bash
+dsh plugin add ./dsh-spring-widget-1.2.0.tgz
+```
+
+> ⚠️ v1.2.0 起要求 DSH 宿主 ≥ 0.2.1-rc.2（RPC 路由直连 `webServer` 服务注册，不再经过 `connection.rpc.handle`）。旧版宿主请使用 v1.0.0。
+
+### 历史版本
+
+| 版本 | 说明 | 下载 |
+|---|---|---|
+| v1.2.0 | 修复宿主 0.2.1-rc.2 下 RPC 通道 HTTP 405；多服务并发管理 | [Release v1.2.0](https://github.com/wrw-dev/dsh-spring-widget/releases/tag/v1.2.0) |
+| v1.0.0 | 首个发布：源码直启 / Jar 启动 / 三页签日志 | [Release v1.0.0](https://github.com/wrw-dev/dsh-spring-widget/releases/tag/v1.0.0) |
 
 ### 本地开发安装（link 模式，改代码即时生效）
 
@@ -156,7 +173,7 @@ springboot_service action=status                            # 状态 + 日志尾
 
 ## 🧱 技术实现要点
 
-- **RPC 通道**：宿主 `ctx.connection.rpc.handle('/spring-widget', ...)` ↔ 客户端 `connection.rpc.call('/spring-widget', ...)`（独立频道，不干扰官方 `/api`）
+- **RPC 通道**：宿主直接 `ctx.inject(['webServer'], ...)` 向 `webServer.register()` 注册 `/spring-widget` 前缀路由 ↔ 客户端 `connection.rpc.call('/spring-widget', ...)`（独立频道，不干扰官方 `/api`；v1.2.0 起不再使用 `connection.rpc.handle` —— 该宿主版本实现内部访问未注入的 `webServer` 会抛错）
 - **子进程采集**：`SubprocessCollect` 内存尾窗 + spill 完整落盘（重扇区可恢复全量）
 - **编码修正**：JDK18+ 默认 native 编码 → JVM 参数 `-Dstdout.encoding=UTF-8` / `-Dstderr.encoding=UTF-8` / `-Dlogging.charset.console=UTF-8`
 - **请求日志**：JVM 参数开启 Tomcat access log（`-Dserver.tomcat.accesslog.enabled=true`），写入 `~/.dsh/spring-widget-access/`，由宿主增量读取展示

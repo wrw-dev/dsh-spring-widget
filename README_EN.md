@@ -66,11 +66,28 @@ Fully adapts to DSH light/dark themes — tabs, buttons and titles stay readable
 
 ## 📦 Install
 
-### From GitHub Release
+### From GitHub Release (recommended)
+
+Latest **[v1.2.0](https://github.com/wrw-dev/dsh-spring-widget/releases/latest)** — fixes the `HTTP 405` transport failure (console & directory picker broken) caused by RPC channel registration failing on DSH host 0.2.1-rc.2.
 
 ```bash
 dsh plugin add dsh-spring-widget --source github:wrw-dev/dsh-spring-widget
 ```
+
+Or download the `dsh-spring-widget-1.2.0.tgz` asset from the Release and install locally:
+
+```bash
+dsh plugin add ./dsh-spring-widget-1.2.0.tgz
+```
+
+> ⚠️ v1.2.0 requires DSH host ≥ 0.2.1-rc.2 (the RPC route registers directly through the `webServer` service instead of `connection.rpc.handle`). For older hosts use v1.0.0.
+
+### Version history
+
+| Version | Notes | Download |
+|---|---|---|
+| v1.2.0 | Fix RPC-channel HTTP 405 on host 0.2.1-rc.2; multi-service concurrency | [Release v1.2.0](https://github.com/wrw-dev/dsh-spring-widget/releases/tag/v1.2.0) |
+| v1.0.0 | Initial release: source launch / jar launch / 3-tab logs | [Release v1.0.0](https://github.com/wrw-dev/dsh-spring-widget/releases/tag/v1.0.0) |
 
 ### Local Development (link mode, hot-reload)
 
@@ -156,7 +173,7 @@ springboot_service action=status                            # Status + log tail
 
 ## 🧱 Technical Notes
 
-- **RPC channel**: host `ctx.connection.rpc.handle('/spring-widget', ...)` ↔ client `connection.rpc.call('/spring-widget', ...)` (dedicated channel, never conflicts with the official `/api`)
+- **RPC channel**: host registers a `/spring-widget` prefix route directly via `ctx.inject(['webServer'], ...)` + `webServer.register()` ↔ client `connection.rpc.call('/spring-widget', ...)` (dedicated channel, never conflicts with the official `/api`; since v1.2.0 `connection.rpc.handle` is no longer used — that host version throws `without inject` on it)
 - **Subprocess capture**: `SubprocessCollect` memory tail window + spill to disk (lost head recoverable)
 - **Encoding fix**: JDK18+ defaults to native encoding → JVM flags `-Dstdout.encoding=UTF-8` / `-Dstderr.encoding=UTF-8` / `-Dlogging.charset.console=UTF-8`
 - **Request logs**: Tomcat access log enabled via JVM flags (`-Dserver.tomcat.accesslog.enabled=true`), written to `~/.dsh/spring-widget-access/`, read incrementally by the host and shown in the UI

@@ -10,7 +10,7 @@ import { homedir } from 'node:os'
 import { defineTool } from '@deepseek-ai/dsh-tools'
 
 export const name = 'dsh-spring-widget'
-export const inject = ['tools', 'connection', 'subprocess', 'timer']
+export const inject = ['tools', 'connection', 'subprocess', 'timer', 'webServer']
 
 const CONFIG_PATH = join(homedir(), '.dsh', 'spring-widget.json')
 const ACCESS_DIR = join(homedir(), '.dsh', 'spring-widget-access')
@@ -675,35 +675,64 @@ export function apply(ctx) {
   }
 
   // ---------- 独立 RPC 频道（浏览器控制台 ←→ 宿主） ----------
-  // 注意：不要用 ctx.connection.rpc.intercept('/api', ...) —— /api 是官方的共享
-  // 拦截器席位（typert-gateway 注册 commands/list、goals/* 等命令端点用），每 channel
-  // 只允许一个拦截器；若插件再抢 /api 会把官方 gateway 顶掉，导致命令目录加载报
-  // "command directory warmup failed ... HTTP 404"。独立频道用 rpc.handle('/xxx', ...)。
-  const disposeRpc = ctx.connection.rpc.handle(
-    '/spring-widget',
-    async (endpoint, payload) => {
-      try {
-        const p = (payload && typeof payload === 'object') ? payload : {}
-        switch (endpoint) {
-          case 'spring-widget/status': ensureDetect(); return { ok: true, value: stateAll() }
-          case 'spring-widget/detect': await detect(getSvc(p.id)); return { ok: true, value: stateAll() }
-          case 'spring-widget/start': return { ok: true, value: await start(getSvc(p.id), p) }
-          case 'spring-widget/stop': return { ok: true, value: await stop(getSvc(p.id)) }
-          case 'spring-widget/restart': return { ok: true, value: await restart(getSvc(p.id), p) }
-          case 'spring-widget/logs': return { ok: true, value: logs(getSvc(p.id), p) }
-          case 'spring-widget/setConfig': await setConfig(getSvc(p.id), p); return { ok: true, value: stateAll() }
-          case 'spring-widget/setActive': return { ok: true, value: setActive(p.id) }
-          case 'spring-widget/addService': return { ok: true, value: addService(p) }
-          case 'spring-widget/removeService': return { ok: true, value: removeService(p.id) }
-          case 'spring-widget/listDir': return { ok: true, value: listDir(p.path) }
-          default: return { ok: false, error: { code: 'internal', message: '未知端点: ' + endpoint, details: {} } }
-        }
-      } catch (e) {
-        return { ok: false, error: { code: 'internal', message: (e && e.message) || String(e), details: {} } }
+  // 注意：不要用 ctx.connection.rpc.handle('/xxx', ...) —— 该宿主版本的实现内部
+  // 以 connection 服务自己的 ctx 访问 owner.webServer，而 client-connection 的静态
+  // inject 只有 ["credentials"]，在插件 ctx 上调用必抛
+  // "cannot get property "webServer" without inject"。这里照抄宿主挂 /api 的模式：
+  // 运行时 ctx.inject(['webServer'], ...) 等服务就绪后直接向 webServer 注册前缀路由，
+  // 请求处理与 connection.rpc.handle 的 rpcFetchHandler 等价（POST JSON + client-request
+  // 信封校验 + server-response 信封返回，均由 webServer 前缀路由承载）。
+  const handleEndpoint = async (endpoint, payload) => {
+    try {
+      const p = (payload && typeof payload === 'object') ? payload : {}
+      switch (endpoint) {
+        case 'spring-widget/status': ensureDetect(); return { ok: true, value: stateAll() }
+        case 'spring-widget/detect': await detect(getSvc(p.id)); return { ok: true, value: stateAll() }
+        case 'spring-widget/start': return { ok: true, value: await start(getSvc(p.id), p) }
+        case 'spring-widget/stop': return { ok: true, value: await stop(getSvc(p.id)) }
+        case 'spring-widget/restart': return { ok: true, value: await restart(getSvc(p.id), p) }
+        case 'spring-widget/logs': return { ok: true, value: logs(getSvc(p.id), p) }
+        case 'spring-widget/setConfig': await setConfig(getSvc(p.id), p); return { ok: true, value: stateAll() }
+        case 'spring-widget/setActive': return { ok: true, value: setActive(p.id) }
+        case 'spring-widget/addService': return { ok: true, value: addService(p) }
+        case 'spring-widget/removeService': return { ok: true, value: removeService(p.id) }
+        case 'spring-widget/listDir': return { ok: true, value: listDir(p.path) }
+        default: return { ok: false, error: { code: 'internal', message: '未知端点: ' + endpoint, details: {} } }
       }
-    },
-    { authority: 'trusted-host' },
-  )
+    } catch (e) {
+      return { ok: false, error: { code: 'internal', message: (e && e.message) || String(e), details: {} } }
+    }
+  }
+  ctx.inject(['webServer'], (webCtx) => {
+    const route = {
+      kind: 'prefix',
+      path: '/spring-widget',
+      handler: async (req, res) => {
+        // 与宿主 rpcFetchHandler 相同的信封协议：解析 client-request，回 server-response
+        const url = new URL(req.url ?? '/', 'http://x')
+        const endpoint = url.pathname.slice('/spring-widget/'.length)
+        const bad = (status, text) => { res.writeHead(status, { 'content-type': 'text/plain; charset=utf-8' }); res.end(text) }
+        if (req.method !== 'POST' || !endpoint || endpoint.split('/').some((s) => s === '' || s === '.' || s === '..')) return bad(404, 'not found')
+        if (String(req.headers['content-type'] || '').split(';', 1)[0].trim().toLowerCase() !== 'application/json') return bad(415, 'content type must be application/json')
+        let body = ''
+        req.on('data', (chunk) => { body += chunk })
+        req.on('end', async () => {
+          let rpcId = ''
+          try {
+            const message = JSON.parse(body)
+            rpcId = String(message.rpcId || '')
+            const result = await handleEndpoint(String(message.method || ''), message.payload)
+            res.writeHead(200, { 'content-type': 'application/json' })
+            res.end(JSON.stringify({ type: 'server-response', rpcId, result }))
+          } catch (e) {
+            res.writeHead(200, { 'content-type': 'application/json' })
+            res.end(JSON.stringify({ type: 'server-response', rpcId, result: { ok: false, error: { code: 'gateway/bad-request', message: (e && e.message) || String(e), details: { issues: [] } } } }))
+          }
+        })
+      },
+    }
+    webCtx.effect(() => webCtx.webServer.register(route), 'dsh-spring-widget: /spring-widget rpc channel')
+  })
 
   // ---------- 模型工具 ----------
   const sbTool = defineTool({
@@ -775,7 +804,6 @@ export function apply(ctx) {
   detect(getSvc('')).catch(() => {})
 
   ctx.effect(() => () => {
-    try { disposeRpc && disposeRpc() } catch {}
     try { disposeTool && disposeTool() } catch {}
     for (const I of services.values()) {
       stopPoll(I)
