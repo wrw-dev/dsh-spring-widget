@@ -1,7 +1,6 @@
-﻿{
+{
   "name": "dsh-spring-widget",
   "version": "1.2.0",
-  "description": "Spring Boot 鍚庣鏈嶅姟绠＄悊鍣細椤舵爮 IDEA 寮忓惎鍔?鍋滄/鏃ュ織鎺у埗鍙帮紙婧愮爜鐩村惎锛屾棤闇€鎵撳寘锛?,
   "type": "module",
   "main": "index.js",
   "license": "UNLICENSED",
@@ -31,5 +30,6 @@
   "peerDependencies": {
     "@deepseek-ai/dsh-tools": "*",
     "@deepseek-ai/cordis": "*"
-  }
+  },
+  "description": "Spring Boot 后端服务管理器：顶栏 IDEA 式启动/停止/日志控制台（源码直启，无需打包）"
 }
